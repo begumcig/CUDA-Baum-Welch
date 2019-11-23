@@ -41,6 +41,7 @@ float add_logs(float x, float y);
 void forward_alg();
 void backward_alg();
 void baum_welch_alg();
+void baum_welch_print();
 
 int main(int argc, char *argv[])
 {
@@ -192,69 +193,9 @@ int main(int argc, char *argv[])
 	fclose(input_file);
 
 	baum_welch_alg();
+	baum_welch_print();
 
-	//printing results.
-
-	/*
-  debug_print("Forward probability array \n");
-	for(int i = 0; i < L; i++){
-		for(int j = 0; j < N; j++){
-			debug_print("%.4e ", exp(alpha[IDX(j,i,L)]));
-		}
-		debug_print("\n");
-	}
-
-
-  debug_print("\n\n\n\n\nBackward probability array \n");
-  for(int j = 0; j < L; j++){
-    for(int k= 0; k < N; k++){
-      debug_print("%.4e  ", exp(beta[IDX(k,j, L)]));
-    }
-    debug_print("\n"); 
-  }*/
-
-	debug_print("\n\n\n\n\nFinal forward probabilities \n");
-	for (int j = 0; j < N; j++)
-	{
-		debug_print("%.4e ", exp(alpha[IDX(j, L - 1, L)]));
-	}
-	debug_print("\n");
-
-	debug_print("\n\n\n\n\nFinal backward probabilities \n");
-	for (int j = 0; j < N; j++)
-	{
-		debug_print("%.4e ", exp(beta[IDX(j, 0, L)]));
-	}
-	debug_print("\n");
-
-	debug_print("\n\n\n\n\nAfter first loop, The transition array \n");
-	for (int i = 0; i < N; i++)
-	{
-		for (int j = 0; j < N; j++)
-		{
-			debug_print("%.4e, ", exp(A[IDX(i, j, N)]));
-		}
-		debug_print("\n");
-	}
-	debug_print("\n");
-
-	debug_print("\n\n\n\n\nAfter first loop, The emission array \n");
-	for (int i = 0; i < N; i++)
-	{
-		for (int j = 0; j < K; j++)
-		{
-			debug_print("%.4e, ", exp(B[IDX(i, j, K)]));
-		}
-		debug_print("\n");
-	}
-	debug_print("\n");
-
-	debug_print("\n\n\n\n\nAfter first loop, prior probabilities \n");
-	for (int j = 0; j < N; j++)
-	{
-		debug_print("%.4e ", exp(pi[j]));
-	}
-	debug_print("\n");
+	
 }
 
 float add_logs(float x, float y)
@@ -389,4 +330,70 @@ void baum_welch_alg()
 			B[IDX(i, j, K)] = gamm[IDX(i, j, K)] - gamma_sum[i];
 		}
 	}
+}
+
+
+void baum_welch_print(){
+	//printing results.
+
+	/*
+  debug_print("Forward probability array \n");
+	for(int i = 0; i < L; i++){
+		for(int j = 0; j < N; j++){
+			debug_print("%.4e ", exp(alpha[IDX(j,i,L)]));
+		}
+		debug_print("\n");
+	}
+
+
+  debug_print("\n\n\n\n\nBackward probability array \n");
+  for(int j = 0; j < L; j++){
+    for(int k= 0; k < N; k++){
+      debug_print("%.4e  ", exp(beta[IDX(k,j, L)]));
+    }
+    debug_print("\n"); 
+  }*/
+
+	debug_print("\n\n\n\n\nFinal forward probabilities \n");
+	for (int j = 0; j < N; j++)
+	{
+		debug_print("%.4e ", exp(alpha[IDX(j, L - 1, L)]));
+	}
+	debug_print("\n");
+
+	debug_print("\n\n\n\n\nFinal backward probabilities \n");
+	for (int j = 0; j < N; j++)
+	{
+		debug_print("%.4e ", exp(beta[IDX(j, 0, L)]));
+	}
+	debug_print("\n");
+
+	debug_print("\n\n\n\n\nAfter first loop, The transition array \n");
+	for (int i = 0; i < N; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			debug_print("%.4e, ", exp(A[IDX(i, j, N)]));
+		}
+		debug_print("\n");
+	}
+	debug_print("\n");
+
+	debug_print("\n\n\n\n\nAfter first loop, The emission array \n");
+	for (int i = 0; i < N; i++)
+	{
+		for (int j = 0; j < K; j++)
+		{
+			debug_print("%.4e, ", exp(B[IDX(i, j, K)]));
+		}
+		debug_print("\n");
+	}
+	debug_print("\n");
+
+	debug_print("\n\n\n\n\nAfter first loop, prior probabilities \n");
+	for (int j = 0; j < N; j++)
+	{
+		debug_print("%.4e ", exp(pi[j]));
+	}
+	debug_print("\n");
 }
