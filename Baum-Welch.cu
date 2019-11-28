@@ -39,7 +39,8 @@
 int N, K, L;
 int *O, *dO;
 float *A, *B, *pi, *alpha, *beta, *xi, *gamm;
-float *dA, *dB, *dpi, *dalpha, *dbeta, *dxi, *dgamm;
+float *dA, *dB, *dpi, *dalpha,*dbeta, *dxi, *dgamm;
+
 
 //transition, emission matrices, the observence sequence and the prior probability array 
 //can be put into texture memory for faster access, since they are read-only.
@@ -48,6 +49,9 @@ texture<float, 1, cudaReadModeElementType> text_B;
 texture<float, 1, cudaReadModeElementType> text_pi;
 texture<int, 1, cudaReadModeElementType> text_O;
 
+__device__ float add_logs(float, float);
+
+
 
 //su an icin alpha row row okuyo digerleri column column okuyo. 
 //coalescing icin matrixlerin transposeunu almayi deneyebilirsin.
@@ -55,7 +59,46 @@ __global__ void first_forward(int N, int K, float * alpha)
 {
 	int x = blockIdx.x * BLOCK_SIZE + threadIdx.x;
 	alpha[IDX(0, x, N)] = tex1Dfetch(text_pi,x) + tex1Dfetch(text_B,IDX(x, tex1Dfetch(text_O, 0), K)); 
-	//debug_print("%d, pi:%.4f, B:%.4f, O:%d \n, result:%.4f ", x, tex1Dfetch(text_pi,x), tex1Dfetch(text_B,IDX(x, tex1Dfetch(text_O, 0), K)), tex1Dfetch(text_O, 0), alpha[IDX(0, x, N)]);
+
+}
+
+__global__ void first_backward(int L, int N, float * beta){
+	int x = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+	beta[IDX(L-1, x, N)] = 0;
+}
+
+__global__ void forward_step(int N, int K, int step, float * alpha){
+	int bx = blockIdx.x;
+	int tx = threadIdx.x;
+	int x = bx * BLOCK_SIZE + tx;
+	float sum = logf(0);
+
+	__shared__ float salpha[BLOCK_SIZE];
+	__shared__ float sB[BLOCK_SIZE];
+
+	int i,j;
+	for(i = 0; i < N; i+= BLOCK_SIZE){
+		// if i + tx < N
+		
+		salpha[tx] = alpha[IDX((step-1),(i + tx), N)];
+		
+		sB[tx] = tex1Dfetch(text_B, IDX(x, tex1Dfetch(text_O, step), K));
+
+		__syncthreads();
+		for(j = 0; j < BLOCK_SIZE; j++)
+			sum = add_logs(sum, (salpha[j] + tex1Dfetch(text_A, IDX(i + j, x, N)) + sB[tx]));
+
+		__syncthreads();
+	}
+
+	alpha[IDX(step, x, N)] = sum;
+}
+
+__device__ float add_logs(float x, float y) {
+  if (y <= x)
+    return x + log1pf(expf(y - x));
+  else
+    return y + log1pf(expf(x - y));
 }
 
 
@@ -63,6 +106,8 @@ int main(int argc, char *argv[]){
 	int c;
 	char *file_path = NULL;
 	opterr = 0;
+	
+
 
 	while ((c = getopt(argc, argv, "f:")) != -1)
 	{
@@ -197,6 +242,7 @@ int main(int argc, char *argv[]){
 	checkCudaErrors(cudaStreamCreate(&stream_back));
 
 
+	//bu kismi da paralelize et.
 	size_t offset = 0;
 	checkCudaErrors(cudaMalloc((void**)&dA, sizeof(float)*N*N));
 	cudaMemcpy(dA, A, sizeof(float)*N*N, cudaMemcpyHostToDevice);
@@ -244,24 +290,52 @@ int main(int argc, char *argv[]){
 	debug_print("%f, grid size for initial forward alg \n", ceil((float) N / dimBlock.x));
 
 	//first step of forward algorithm.
+	//olasilik: bu kadar buyuk bi allocation yapmak yerine her tur N kadarlik memory allocate edip 
+	//sonraki turlarda surekli bi onceki turun sonuclarini gpuya tasimak
 	checkCudaErrors( cudaMalloc((void**)&dalpha, sizeof(float) * N * L));
+	checkCudaErrors( cudaMalloc((void**)&dbeta, sizeof(float) * N * L));
+
+
 	
-	//TODO buraya senkron koymam gerekir mi?? probably not. yine de aklinda bulunsun.
 	
 	first_forward<<<dimGrid, dimBlock, 0, stream_forw>>>(N,K, dalpha);
-
 	checkCudaErrors(cudaMemcpyAsync(alpha,dalpha,N * sizeof(float),cudaMemcpyDeviceToHost, stream_forw));
 
+	first_backward<<<dimGrid, dimBlock,0, stream_back>>>(L, N, dbeta);
+	checkCudaErrors(cudaMemcpyAsync(beta,dbeta,N * sizeof(float),cudaMemcpyDeviceToHost, stream_back));
+
+	
+	//olasilik: her seferinde bir onceki turu texture memoryye yuklemek?
+	//olasilik: texture bind etme isini de asama asama yapmak
+	for (int i = 1; i < L; i++){
+		forward_step<<<dimGrid, dimBlock, 0, stream_forw>>>(N, K, i, dalpha);
+		
+		checkCudaErrors(cudaMemcpyAsync(alpha + i * N,dalpha + i * N ,N * sizeof(float),cudaMemcpyDeviceToHost, stream_forw));
+
+	}
 	cudaDeviceSynchronize();
 
-	//TODO don't forget to free host memory, device memory, texture memory and pinned memory biatch.
 	
-	debug_print("\n\n\n\n\nInitial forward probabilities \n");
+	
+
+
+	//TODO don't forget to free host memory, device memory, texture memory and pinned memory biatch.
+
+	debug_print("Forward probability array \n");
+	for(int i = 0; i < L; i++){
+		for(int j = 0; j < N; j++){
+			debug_print("%.4e ", exp((double)alpha[IDX(i,j,N)]));
+		}
+		debug_print("\n");
+	}
+
+	debug_print("\n\n\n\n\nInitial backward probabilities \n");
 	for (int j = 0; j < N; j++)
 	{
-		debug_print("%.4e ", exp(alpha[IDX(0, j, N)]));
+		debug_print("%.4e ", exp(beta[IDX(L-1, j, N)]));
 	}
 	debug_print("\n");
+
 
 
 
